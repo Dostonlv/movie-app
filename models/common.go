@@ -11,4 +11,3 @@ type IError struct {
 	Tag   string
 	Value string
 }
-type OwnerID string

@@ -15,7 +15,8 @@ func main() {
 
 	api := app.Group("/api", logger.New())
 	user := api.Group("/user")
-	user.Post("/create", middleware.UserValidator, router.User)
+	user.Post("/create", middleware.UserValidator, router.CreateUser)
+	user.Post("/verify-email", router.VerifyEmail)
 	database.InitDB()
 
 	app.Get("/", func(c *fiber.Ctx) error {
