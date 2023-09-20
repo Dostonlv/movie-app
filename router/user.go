@@ -1,10 +1,13 @@
 package router
 
 import (
+	"context"
 	"fmt"
 	"github.com/gofiber/fiber/v2"
 	"github.com/joho/godotenv"
 	"go.mongodb.org/mongo-driver/bson"
+	"go.mongodb.org/mongo-driver/mongo"
+	"go.mongodb.org/mongo-driver/mongo/options"
 	"movie/database"
 	"movie/mail"
 	"movie/models"
@@ -56,7 +59,7 @@ func CreateUser(c *fiber.Ctx) error {
 	from := os.Getenv("NAMECHEAP_EMAIL")
 	password := os.Getenv("NAMECHEAP_PASSWORD")
 
-	OTPsender := mail.NewEmailSender("Uchiha Foundation", from, password)
+	OTPsender := mail.NewEmailSender("to-kioname", from, password)
 	to := []string{user.Email}
 	err = OTPsender.SendEmail("Hello "+user.Name, "Hello Your OTP code: "+OTP, to, nil, nil, nil)
 	if err != nil {
@@ -69,6 +72,17 @@ func CreateUser(c *fiber.Ctx) error {
 	}
 	emailVerifyToken.Token = hashedOTP
 	emailVerifyToken.CreatedAt = time.Now()
+
+	opts := options.Index().SetExpireAfterSeconds(60)
+	_, err = collectionEmailVerificationToken.Indexes().CreateOne(context.Background(), mongo.IndexModel{
+		Keys:    bson.D{{"Expires", 1}},
+		Options: opts,
+	})
+	if err != nil {
+		return c.Status(500).SendString("index not created")
+	}
+	emailVerifyToken.Expires = emailVerifyToken.CreatedAt.Add(1 * time.Minute)
+
 	_, err = collectionEmailVerificationToken.InsertOne(c.Context(), emailVerifyToken)
 	if err != nil {
 		return c.Status(500).SendString("OTP not sent to your email")
@@ -80,8 +94,6 @@ func CreateUser(c *fiber.Ctx) error {
 
 func VerifyEmail(c *fiber.Ctx) error {
 	c.Accepts("application/json")
-	// check if email is verified or not if not verified then verify it
-	// if verified then send error message
 
 	collectionUser := database.InitDB().Db.Collection("user")
 	collectionEmailVerificationToken := database.InitDB().Db.Collection("email_verification_token")
@@ -90,12 +102,19 @@ func VerifyEmail(c *fiber.Ctx) error {
 		return c.Status(400).SendString(err.Error())
 	}
 
-	// find user by id
+	// check email otp expired email_verification_token
+	var expired models.EmailVerificationToken
 	filter := bson.D{{Key: "_id", Value: emailVerify.ID}}
-	var result models.User
-	err := collectionUser.FindOne(c.Context(), filter).Decode(&result)
+	err := collectionEmailVerificationToken.FindOne(c.Context(), filter).Decode(&expired)
 	if err != nil {
-		return c.Status(401).SendString("user not found1")
+		return c.Status(500).SendString("error from  expired decode")
+	}
+
+	// find user by id
+	var result models.User
+	err = collectionUser.FindOne(c.Context(), filter).Decode(&result)
+	if err != nil {
+		return c.Status(401).SendString("user not found")
 	}
 
 	// find email verification token by id
@@ -103,7 +122,7 @@ func VerifyEmail(c *fiber.Ctx) error {
 	var resultEmailVerificationToken models.EmailVerificationToken
 	err = collectionEmailVerificationToken.FindOne(c.Context(), filter).Decode(&resultEmailVerificationToken)
 	if err != nil {
-		return c.Status(401).SendString("user not found2")
+		return c.Status(401).SendString("user not found")
 	}
 
 	// compare otp
@@ -112,11 +131,17 @@ func VerifyEmail(c *fiber.Ctx) error {
 		return c.Status(401).SendString("wrong otp")
 	}
 
-	// update user email_verified to true
-	update := bson.D{{Key: "$set", Value: bson.D{{Key: "email_verified", Value: true}}}}
-	_, err = collectionUser.UpdateOne(c.Context(), filter, update)
-	if err != nil {
-		return c.Status(500).SendString("something went wrong")
+	// if otp is expired user is_verify not update
+
+	// check expired.Expires > time.Now() update else otp expired
+	if expired.Expires.After(time.Now()) {
+		update := bson.D{{Key: "$set", Value: bson.D{{Key: "is_verify", Value: true}}}}
+		_, err = collectionUser.UpdateOne(c.Context(), filter, update)
+		if err != nil {
+			return c.Status(500).SendString("something went wrong")
+		}
+	} else {
+		return c.Status(500).SendString("OTP expired")
 	}
 
 	return c.Status(200).SendString("email verified")

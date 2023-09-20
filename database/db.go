@@ -18,7 +18,7 @@ var (
 
 func InitDB() models.MongoInstance {
 	cfg = config.Load()
-	log = logger.New(cfg.LogLevel, "Movie")
+	log = logger.New(cfg.LogLevel, "to-kioname")
 	log.Info("main: SQLConfig",
 		logger.String("Host", cfg.MongoHost),
 		logger.Int("Port", cfg.MongoPort),

@@ -6,4 +6,5 @@ type EmailVerificationToken struct {
 	OwnerID   interface{} `bson:"_id"`
 	Token     string      `bson:"token" json:"token"`
 	CreatedAt time.Time   `bson:"created_at" json:"created_at"`
+	Expires   time.Time   `bson:"expires" json:"expires"`
 }
