@@ -17,6 +17,7 @@ func main() {
 	user := api.Group("/user")
 	user.Post("/create", middleware.UserValidator, router.CreateUser)
 	user.Post("/verify-email", router.VerifyEmail)
+	user.Post("/resend-email-verification-token", router.ResendEmailVerificationToken)
 	database.InitDB()
 
 	app.Get("/", func(c *fiber.Ctx) error {
